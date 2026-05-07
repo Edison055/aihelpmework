@@ -41,19 +41,18 @@
             useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight; }, [msgs]);
 
 const callAPI = async (k, sys, user, cb) => {
-                // 這裡改成了 v1 正式版路徑
-                const url = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:streamGenerateContent?alt=sse&key=${k}`;
+                // 使用 v1beta 搭配合併後的 contents 結構最保險
+                const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:streamGenerateContent?alt=sse&key=${k}`;
                 const res = await fetch(url, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
-                        system_instruction: {
-                            parts: [{ text: sys }]
-                        },
-                        contents: [{
-                            role: "user",
-                            parts: [{ text: user }]
-                        }]
+                        contents: [
+                            {
+                                role: "user",
+                                parts: [{ text: `系統指令：${sys}\n\n用戶課題：${user}` }]
+                            }
+                        ]
                     })
                 });
 
@@ -86,7 +85,6 @@ const callAPI = async (k, sys, user, cb) => {
                 }
                 return fullText;
             };
-
             const run = async () => {
                 if(!input.trim() || loading) return;
                 const q = input; setInput(""); setLoading(true);
