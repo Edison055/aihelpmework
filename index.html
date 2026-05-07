@@ -41,8 +41,9 @@
             useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight; }, [msgs]);
 
 const callAPI = async (k, sys, user, cb) => {
-                // 強制使用 v1 正式版路徑，並改用更穩定的 gemini-1.5-pro 模型
-                const url = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-pro:streamGenerateContent?alt=sse&key=${k}`;
+                // 將模型 ID 修改為你截圖中顯示的 gemini-3-flash-preview
+                const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:streamGenerateContent?alt=sse&key=${k}`;
+                
                 const res = await fetch(url, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
@@ -50,15 +51,22 @@ const callAPI = async (k, sys, user, cb) => {
                         contents: [
                             {
                                 role: "user",
-                                parts: [{ text: `系統指令：${sys}\n\n用戶課題：${user}` }]
+                                parts: [
+                                    { text: `## 系統指令\n${sys}\n\n## 用戶課題\n${user}` }
+                                ]
                             }
-                        ]
+                        ],
+                        generationConfig: {
+                            temperature: 0.75,
+                            maxOutputTokens: 4096
+                        }
                     })
                 });
 
                 if (!res.ok) {
                     const errData = await res.json();
-                    throw new Error(errData.error?.message || "請求失敗");
+                    // 如果還是報 404，可能是因為 Preview 模型名稱在不同地區有微小差異
+                    throw new Error(errData.error?.message || "請求失敗，請檢查模型名稱與 API Key 權限。");
                 }
 
                 const reader = res.body.getReader();
@@ -74,7 +82,8 @@ const callAPI = async (k, sys, user, cb) => {
                         if (line.startsWith("data: ")) {
                             try {
                                 const data = JSON.parse(line.slice(6).trim());
-                                const txt = data.candidates[0].content.parts[0].text;
+                                // 修正資料讀取路徑，Gemini 3 的回傳結構可能更深
+                                const txt = data.candidates?.[0]?.content?.parts?.[0]?.text;
                                 if (txt) {
                                     fullText += txt;
                                     cb(fullText);
