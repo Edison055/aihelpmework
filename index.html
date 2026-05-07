@@ -40,35 +40,50 @@
 
             useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight; }, [msgs]);
 
-            const callAPI = async (k, sys, user, cb) => {
-                const url = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:streamGenerateContent?alt=sse&key=${k}`;
+          const callAPI = async (k, sys, user, cb) => {
+                const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:streamGenerateContent?alt=sse&key=${k}`;
                 const res = await fetch(url, {
                     method: "POST",
-                    headers: {"Content-Type": "application/json"},
+                    headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({
-                        system_instruction: {parts: [{text: sys}]},
-                        contents: [{role: "user", parts: [{text: user}]}]
+                        system_instruction: {
+                            parts: [{ text: sys }]
+                        },
+                        contents: [{
+                            role: "user",
+                            parts: [{ text: user }]
+                        }]
                     })
                 });
-                if (!res.ok) throw new Error("API 請求失敗，請檢查 Key。");
+
+                if (!res.ok) {
+                    const errData = await res.json();
+                    throw new Error(errData.error?.message || "請求失敗");
+                }
+
                 const reader = res.body.getReader();
                 const decoder = new TextDecoder();
-                let full = "";
-                while(true) {
-                    const {done, value} = await reader.read();
-                    if(done) break;
+                let fullText = "";
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
                     const chunk = decoder.decode(value);
-                    chunk.split("\n").forEach(line => {
-                        if(line.startsWith("data: ")) {
+                    const lines = chunk.split("\n");
+                    for (const line of lines) {
+                        if (line.startsWith("data: ")) {
                             try {
-                                const json = JSON.parse(line.slice(6));
-                                const txt = json.candidates[0].content.parts[0].text;
-                                if(txt) { full += txt; cb(full); }
-                            } catch(e){}
+                                const data = JSON.parse(line.slice(6).trim());
+                                const txt = data.candidates[0].content.parts[0].text;
+                                if (txt) {
+                                    fullText += txt;
+                                    cb(fullText);
+                                }
+                            } catch (e) {}
                         }
-                    });
+                    }
                 }
-                return full;
+                return fullText;
             };
 
             const run = async () => {
