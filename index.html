@@ -40,8 +40,9 @@
 
             useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight; }, [msgs]);
 
-          const callAPI = async (k, sys, user, cb) => {
-               const url = https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:streamGenerateContent?alt=sse&key=${k};
+const callAPI = async (k, sys, user, cb) => {
+                // 這裡改成了 v1 正式版路徑
+                const url = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:streamGenerateContent?alt=sse&key=${k}`;
                 const res = await fetch(url, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
