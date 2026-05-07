@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Council — 權威議會系統</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Mono&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+        body{height:100vh;background:#05070a;color:#d1d5db;font-family:'DM Sans',sans-serif;display:flex;flex-direction:column;overflow:hidden}
+        #root{height:100%}
+        .scroll-v::-webkit-scrollbar{width:4px}
+        .scroll-v::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.1);border-radius:2px}
+        @keyframes slide{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+        .msg-anim{animation:slide 0.4s ease-out forwards}
+        input:focus{outline:none;border-color:#6366f1}
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+    <script type="text/babel">
+        const { useState, useRef, useEffect } = React;
+        const AGENTS = [
+            {id:"gpt4o", name:"邏輯架構師", color:"#10b981", persona:"資深學術編修。擅長構建嚴密論證框架。文字精煉，不使用條列式。"},
+            {id:"gemini", name:"文獻思辨家", color:"#a78bfa", persona:"跨學科研究專家。結合經典理論，多做價值判斷，少做總結。"},
+            {id:"nova", name:"批判性審查", color:"#4fc3f7", persona:"嚴苛期刊審稿人。尋找邏輯漏洞，挑戰前提。語氣犀利。"},
+            {id:"sage", name:"人文倫理學", color:"#66bb6a", persona:"人文哲學家。關注長遠衝擊，強調判斷力。語句長短交替。"}
+        ];
+
+        const App = () => {
+            const [key, setKey] = useState(localStorage.getItem("c_key") || "");
+            const [tempKey, setTempKey] = useState("");
+            const [msgs, setMsgs] = useState([]);
+            const [input, setInput] = useState("");
+            const [loading, setLoading] = useState(false);
+            const scrollRef = useRef();
+
+            useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight; }, [msgs]);
+
+            const callAPI = async (k, sys, user, cb) => {
+                const url = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:streamGenerateContent?alt=sse&key=${k}`;
+                const res = await fetch(url, {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify({
+                        system_instruction: {parts: [{text: sys}]},
+                        contents: [{role: "user", parts: [{text: user}]}]
+                    })
+                });
+                if (!res.ok) throw new Error("API 請求失敗，請檢查 Key。");
+                const reader = res.body.getReader();
+                const decoder = new TextDecoder();
+                let full = "";
+                while(true) {
+                    const {done, value} = await reader.read();
+                    if(done) break;
+                    const chunk = decoder.decode(value);
+                    chunk.split("\n").forEach(line => {
+                        if(line.startsWith("data: ")) {
+                            try {
+                                const json = JSON.parse(line.slice(6));
+                                const txt = json.candidates[0].content.parts[0].text;
+                                if(txt) { full += txt; cb(full); }
+                            } catch(e){}
+                        }
+                    });
+                }
+                return full;
+            };
+
+            const run = async () => {
+                if(!input.trim() || loading) return;
+                const q = input; setInput(""); setLoading(true);
+                setMsgs([{role:"user", text:q}]);
+                const context = {};
+                try {
+                    for (const a of AGENTS) {
+                        const mid = Date.now() + a.id;
+                        setMsgs(p => [...p, {role:"agent", name:a.name, color:a.color, text:"", id:mid}]);
+                        context[a.id] = await callAPI(key, a.persona, q, (t) => {
+                            setMsgs(p => p.map(m => m.id === mid ? {...m, text:t} : m));
+                        });
+                    }
+                    const arbId = "arb-" + Date.now();
+                    setMsgs(p => [...p, {role:"agent", name:"⚡ ARBITER", color:"#fbbf24", text:"", id:arbId}]);
+                    const prompt = `原始課題：${q}\n\n討論內容：\n${Object.values(context).join("\n\n")}`;
+                    await callAPI(key, "資深學術裁決者。批判性集成觀點。改寫句子確保去AI特徵（不連續重複8字）。文字通俗但具深度。直接判斷，不廢話。", prompt, (t) => {
+                        setMsgs(p => p.map(m => m.id === arbId ? {...m, text:t} : m));
+                    });
+                } catch(e){ alert(e.message); } finally { setLoading(false); }
+            };
+
+            if(!key) return (
+                <div style={{height:"100%", display:"flex", alignItems:"center", justifyContent:"center", background:"#05070a"}}>
+                    <div style={{width:320}}>
+                        <h2 style={{color:"#fff", textAlign:"center", marginBottom:20}}>🏛️ AI COUNCIL</h2>
+                        <input type="password" placeholder="貼上 API Key" value={tempKey} onChange={e=>setTempKey(e.target.value)} style={{width:"100%", padding:15, background:"#111", border:"1px solid #333", color:"#fff", borderRadius:10, marginBottom:10}} />
+                        <button onClick={()=>{localStorage.setItem("c_key", tempKey.trim()); setKey(tempKey.trim());}} style={{width:"100%", padding:12, background:"#6366f1", color:"#fff", border:"none", borderRadius:10, cursor:"pointer"}}>進入議會</button>
+                    </div>
+                </div>
+            );
+
+            return (
+                <div style={{height:"100%", display:"flex", flexDirection:"column"}}>
+                    <header style={{padding:15, borderBottom:"1px solid #222", background:"#0d1117", display:"flex", justifyContent:"space-between"}}>
+                        <span style={{color:"#8b949e", fontSize:12, fontFamily:"Space Mono"}}>AC-2026-PC</span>
+                        <button onClick={()=>{localStorage.removeItem("c_key"); setKey("");}} style={{background:"none", border:"none", color:"#f85149", cursor:"pointer", fontSize:11}}>RESET</button>
+                    </header>
+                    <main ref={scrollRef} className="scroll-v" style={{flex:1, overflowY:"auto", padding:20}}>
+                        {msgs.map((m,i) => (
+                            <div key={i} className="msg-anim" style={{marginBottom:25, maxWidth:m.role==="user"?"85%":"100%", marginLeft:m.role==="user"?"auto":"0"}}>
+                                {m.name && <div style={{fontSize:11, fontWeight:"bold", color:m.color, marginBottom:5}}>{m.name}</div>}
+                                <div style={{padding:15, background:m.role==="user"?"#161b22":"#111", borderRadius:12, border:"1px solid #333", fontSize:14.5, lineHeight:1.8, whiteSpace:"pre-wrap"}}>{m.text || "正在審議..."}</div>
+                            </div>
+                        ))}
+                    </main>
+                    <footer style={{padding:20, background:"#0d1117", borderTop:"1px solid #222"}}>
+                        <div style={{display:"flex", gap:10, maxWidth:800, margin:"0 auto"}}>
+                            <input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==="Enter" && run()} placeholder="發起課題討論..." style={{flex:1, padding:15, background:"#010409", border:"1px solid #333", color:"#fff", borderRadius:12}} />
+                            <button onClick={run} disabled={loading} style={{padding:"0 25px", background:loading?"#222":"#238636", color:"#fff", border:"none", borderRadius:12, cursor:"pointer"}}>{loading?"...":"提交"}</button>
+                        </div>
+                    </footer>
+                </div>
+            );
+        };
+        const root = ReactDOM.createRoot(document.getElementById("root"));
+        root.render(<App />);
+    </script>
+</body>
+</html>
